@@ -46,10 +46,10 @@ retval)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Applies f to each element in a, returning a list with (f(a[1]), f(a[2])...)
 (defun apply-func (f a)
-	(if (not (endp a))
-		(cons (funcall f (car a)) (apply-func f (cdr a)))))
+  (map 'list 'f 'a))
 
 ;applies f to the two lists, returns a list.
+;; What is this weirdness?
 (defun apply-func-2lists (f a b)
   (let ((retval nil)
 	(newa a)
@@ -60,6 +60,9 @@ retval)
      (setq newb (cdr newb))
      (when (endp newa) (return)))
     (reverse retval)))
+
+(defun apply-func-2lists-better ( f a b)
+  (mapcar #'f 'a 'b))
 ;exchanges the n'th element of a and b
 (defun exchange(n a b)
 	(let ((temp (nth n b)))
@@ -120,7 +123,7 @@ retval)
 
 ;these are our operations
 ;binary operations
-(setq bin-op-list '(+ - * /)) 
+(setq bin-op-list '(+ - * / eq)) 
 ;unary operations
 (setq un-op-list '(sin cos log exp abs))
 
@@ -188,6 +191,12 @@ retval)
 
 (defun new-tree ( x )
   (make-tree (rand-tree-node) x))
+
+(defmacro bind-tree (n)
+    (lambda (X) (new-tree n)))
+
+(funcall (bind-tree 2) 2)
+
 ;evaluates the tree
 (defun eval-tree (tree)
   (eval (eval tree)))
@@ -217,4 +226,41 @@ retval)
 ;  (setq total (append total (list "tree" tree)))
 total
 ))
+
+
+(defun check-similarity ()
+  (let 
+      ((i 1) 
+       (dummy-tree (new-tree 4))
+       test-value)    
+  (loop 
+   (setq x i)
+   (setq test-value (eval-tree dummy-tree))
+   (format t "~a\n" test-value)
+   (setq i (+ i 1))
+   (when (eq i 100) (return)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; More code
+
+
+(defmacro generate-lambda-tree(n)
+  "Generates a tree and returns the lambda of its function"
+  `(lambda (X)
+       ,(new-tree n)))
+
+;;Turns a tree into a lambda
+(defmacro tree-to-lambda(tree)
+  "Takes a tree and turns it into the lambda of its function"
+  (eval ``(lambda (X) 
+     ,,tree)))
+
+(setq mytree (new-tree 6))
+
+(funcall (tree-to-lambda mytree) 0)
+
+(tree-to-lambda mytree)
+mytree
+
+
 
