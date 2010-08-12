@@ -1,17 +1,28 @@
-;The Z system
+;The Z system <--- Z???
 ;testtree.l
 ;Let's set up a function tree and evaluate it
 
 ;desired results
 (setq f-g (list '(1 2) '(2 3) '(3 4) '(4 5) '(5 6) '(6 7) '(7 8)))
+
 ;the function we want
 (defun want-func(x)
   (+ x 1))
 
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of general math routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun flatten (x)
+  "descend into the supplied list until an atom is hit.
+append the atom to the flattened rest"
+  (if (endp x)
+      x
+    (if (atom (car x ))
+	(append (list (car x)) (flatten (cdr x)))
+      (append (flatten (car x)) (flatten (cdr x ))))))
 
 ;squares x
 (defun sqr (x) (* x x))
@@ -23,63 +34,46 @@
 ;(a + b) / 2
 (defun average (a b) ( / (+ a b) 2))
 
-;gets the average of a list: recurses.
+;;;gets the average of a list
 (defun average-list (l) 
-	(if (not (endp l))
-		(if (listp (car l))
-			(average-list (apply-func 'average-list l))
-			(/ (sum-list l) (list-length l)))
-		nil))
+  (let ((newlist (flatten l)))
+    (/ (sum-list newlist)
+       (list-length l))))
 
-;component-wise addition I think...
+;;;component-wise addition I think...
+;;TODO: Rewrite as one of the map* family
 (defun addlists (x y)
  (setq retval nil)
   (loop 	
-   (setq retval (append (list (+ (car x) (car y))) retval))
-   (setf x (cdr x))
-   (setf y (cdr y))	
- (when (endp  x) (return)))
-retval)
+   (setq retval 
+	 (append (list (+ (car x) (car y))) retval))
+     (setf x (cdr x))
+     (setf y (cdr y))	
+     (when (endp  x) (return)))
+  retval)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of list routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;Applies f to each element in a, returning a list with (f(a[1]), f(a[2])...)
-(defun apply-func (f a)
-  (map 'list 'f 'a))
 
-;applies f to the two lists, returns a list.
-;; What is this weirdness?
-(defun apply-func-2lists (f a b)
-  (let ((retval nil)
-	(newa a)
-	(newb b))
-    (loop 
-     (setq retval (append (list (funcall f (car newa) (car newb))) retval))
-     (setq newa (cdr newa))
-     (setq newb (cdr newb))
-     (when (endp newa) (return)))
-    (reverse retval)))
-
-(defun apply-func-2lists-better ( f a b)
-  (mapcar #'f 'a 'b))
 ;exchanges the n'th element of a and b
 (defun exchange(n a b)
-	(let ((temp (nth n b)))
-		(setf (nth n b) (nth n a))
-		(setf (nth n a) temp)))
+  (let ((temp (nth n b)))
+    (setf (nth n b) (nth n a))
+    (setf (nth n a) temp)))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of fuzzy routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;fuzzy closeness is needed. [0, 1] 
+;TODO: Check if this can be Reduced.
 (defun fuzzy-equal (a b)
-   (cond 
-		((and (numberp a) (numberp b))	;If both are numbers
-			(fuzzy-close a b))
-		((and (listp a) (listp b))			;If both are lists
-			(fuzzy-equal-lists a b))
-		(t nil)))								;Otherwise nil out.
+  (cond 
+    ((and (numberp a) (numberp b))	;If both are numbers
+     (fuzzy-close a b))
+    ((and (listp a) (listp b))			;If both are lists
+     (fuzzy-equal-lists a b))
+    (t nil)))								;Otherwise nil out.
 
 ;Are they identical?
 ;1 if they are, 0 if they differ by infinity.
@@ -88,16 +82,17 @@ retval)
   (if (equal (abs a) (abs b)) 1
 	   (/ 1 ( + (abs (- (abs a) (abs b))) 1.0))))
 
-;degree of equality of the two lists
-;Will recurse.
-(defun fuzzy-equal-lists (a b)
-	(if (or 
-			(not (equal (length a) (length b)))	;Length must be equal 
-			(not (and (listp a) (listp b)))) 		;Both must be lists
-		nil													;fails if condition is not met
-		(progn 
-			(average-list (apply-func-2lists 'fuzzy-equal a  b)))))
-		
+;degree of equality of the two trees
+;Will recurse.  ;;TODO: But doesn't!!! dun dun dun
+(defun fuzzy-equal-trees (a b)
+  (if (or 
+       (not (equal (length a) (length b)))	;Length must be equal 
+       (not (and (listp a) (listp b)))) 		;Both must be lists
+      nil													;fails if condition is not met
+      (progn 
+
+	(average-list (mapcar 'fuzzy-equal a  b)))))
+
 		
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -106,6 +101,7 @@ retval)
 
 
 ;where n is the number of elements, m is the range
+;;TODO: WHO AM I?
 (defun generate-rand-list (n m)
     (setq temp nil)
     (loop      
@@ -115,6 +111,7 @@ retval)
     temp)
 
 (defun getrand (max)
+  "Returns between 0 and max."
 	(random max (make-random-state t)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -123,9 +120,9 @@ retval)
 
 ;these are our operations
 ;binary operations
-(setq bin-op-list '(+ - * / eq)) 
+(setq bin-op-list '(+ - * /))
 ;unary operations
-(setq un-op-list '(sin cos log exp abs))
+(setq un-op-list '(1+ sin cos log exp abs sqr sqrt))
 
 ;sets up a list with the n'th binary operation and params 
 (defun bin-term-create (n p1 p2)
@@ -149,40 +146,53 @@ retval)
 (defun set-right-leaf (parent leaf)
   (setf (nth 2 parent) leaf))
 
+
+(defun shake-p ()
+  "Shakes according to a specific predicate"
+  (> (getrand 10) 7))
+
 ;uses x as an independant variable
 ;Adds depth d to node node. Recursive
-(defun make-tree (node d)
+(defun make-tree (node depth)
   (if (eq (length node) 3) ;is node a binary node
-     ;Can we go deeper?
-      (if (eq d 0)
-	 ;this case is simple. Terminals only
+      ;;Can we go deeper?
+      (if (eq depth 0)
+	  ;;this case is simple. Terminals only
 	  (progn (setf (nth 1 node) 'x)      
 		 (setf (nth 2 node) 'x))
-         ;This case is the interesting one
-	(progn
-	  ;The left node
-	    (if (> (getrand 10) 7)
+
+	  ;;This case is the interesting one
+	  (progn
+	    ;;The left node
+	    (if (shake-p) 
 		(setf (nth 1 node) 'x)
-	      (setf (nth 1 node) (make-tree (rand-tree-node) (- d 1))))
+
+		(setf 
+		 (nth 1 node) 
+		 (make-tree 
+		  (rand-tree-node) 
+		  (- depth 1))))
+
 	  ;the right node
-	    (if (> (getrand 10) 7)
-		(setf (nth 2 node) 'x)
-	      (setf (nth 2 node) (make-tree (rand-tree-node) (- d 1))))))
+	    (if (shake-p) ;;seventy percent
+		(setf  (nth 2 node) 'x)
+		(setf (nth 2 node) (make-tree (rand-tree-node) (- depth 1))))))
+      
 
     ;the unary case
-    (progn 
+  (progn 
       ;Can we go deeper?
-      (if (eq d 0)
-	 ;this case is simple. Terminals only
-	  (setf (nth 1 node) 'x)
-         ;This case is the interesting one
+    (if (eq depth 0)
+	;;this case is simple. Terminals only
+	(setf (nth 1 node) 'x)
+	;;This case is the interesting one
 	(progn
-	  ;The center node
-	    (if (> (getrand 10) 7)
-		(setf (nth 1 node) 'x)
-	      (setf (nth 1 node) (make-tree (rand-tree-node) (- d 1))))))))
+	  ;;The center node
+	  (if (shake-p) ;;seventy percent.
+	      (setf (nth 1 node) 'x)
+	      (setf (nth 1 node) (make-tree (rand-tree-node) (- depth 1))))))))
 					;recurse down
-	  
+  
   node);end of function- returns node
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -192,40 +202,9 @@ retval)
 (defun new-tree ( x )
   (make-tree (rand-tree-node) x))
 
-(defmacro bind-tree (n)
-    (lambda (X) (new-tree n)))
-
-(funcall (bind-tree 2) 2)
-
 ;evaluates the tree
 (defun eval-tree (tree)
   (eval (eval tree)))
-
-;Tests it against x = {1 ... 7}
-(defun test-against (tree)
-  (setq x 1)
-  (let ((total (list (list x (eval-tree tree)))))
-
-  (setq x 2)
-  (setq total (append total (list (list x (eval-tree tree)))))
-
-  (setq x 3)
-  (setq total (append total (list (list x (eval-tree tree)))))
-
-  (setq x 4)
-  (setq total (append total (list (list x (eval-tree tree)))))
-
-  (setq x 5)
-  (setq total (append total (list (list x (eval-tree tree)))))
-
-  (setq x 6)
-  (setq total (append total (list (list x (eval-tree tree)))))
-
-  (setq x 7)
-  (setq total (append total (list (list x (eval-tree tree)))))
-;  (setq total (append total (list "tree" tree)))
-total
-))
 
 
 (defun check-similarity ()
@@ -255,12 +234,18 @@ total
   (eval ``(lambda (X) 
      ,,tree)))
 
-(setq mytree (new-tree 6))
+(setq mytree (new-tree 2))
 
-(funcall (tree-to-lambda mytree) 0)
+;(funcall (tree-to-lambda mytree) 4)
 
-(tree-to-lambda mytree)
-mytree
+;(tree-to-lambda mytree)
+;mytree
 
+
+(defun range (s e)
+  (unless (= s e)
+      (cons s  (range (+ 1 s) e))))
+
+(mapcar (tree-to-lambda mytree) (range 1 10))
 
 
