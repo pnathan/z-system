@@ -1,80 +1,95 @@
-					;The Z system <--- Z???
-;testtree.l
-;Let's set up a function tree and evaluate it
+;;;;Genetic programming program
+;;;;Let's set up a function tree and evaluate it
 
-;desired results
-(setq f-g (list '(1 2) '(2 3) '(3 4) '(4 5) '(5 6) '(6 7) '(7 8)))
+
+(defun range (start end)
+  (assert (<= start end))
+  (loop for n from start below end
+        collect n))
 
 ;the function we want
-(defun want-func(x)
+(defun want-func (x)
+  "Goal function"
   (+ x 1))
 
+(defvar *test-input-output* (mapcar #'(lambda (x) 
+					(list x (want-func x))) 
+				    (range 2 100))
+  "The desired results")
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;A set of general math routines
+;;;A set of general math routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; (defun range (s e)
+;;   (unless (= s e)
+;;       (cons s  (range (+ 1 s) e))))
 
-(defun range (s e)
-  (unless (= s e)
-      (cons s  (range (+ 1 s) e))))
 
-
-(defun flatten (x)
+(defun flatten (tree)
   "descend into the supplied list until an atom is hit.
 append the atom to the flattened rest"
-  (if (endp x)
+  (if (endp tree)
       x
-    (if (atom (car x ))
-	(append (list (car x)) (flatten (cdr x)))
-      (append (flatten (car x)) (flatten (cdr x ))))))
+    (if (atom (car tree ))
+	(append (list (car tree)) (flatten (cdr tree)))
+      (append (flatten (car tree)) (flatten (cdr tree ))))))
 
-;squares x
-(defun sqr (x) (* x x))
+(defun sqr (x) 
+  "squares x"
+  (* x x))
 
-;Sum the entire list
 (defun sum-list(l)
+  "Sum the entire list"
   (reduce '+ l))
 
 ;(a + b) / 2
-(defun average (a b) ( / (+ a b) 2))
+(defun average (a b) 
+  ( / (+ a b) 2))
 
-;;;gets the average of a list
+
 (defun average-list (l) 
+  "gets the average of a list"
   (let ((newlist (flatten l)))
     (/ (sum-list newlist)
        (list-length l))))
 
 ;;;component-wise addition I think...
 ;;TODO: Rewrite as one of the map* family
+;;mapcar #'+ x y
 (defun addlists (x y)
- (setq retval nil)
-  (loop 	
-   (setq retval 
-	 (append (list (+ (car x) (car y))) retval))
-     (setf x (cdr x))
-     (setf y (cdr y))	
-     (when (endp  x) (return)))
-  retval)
-
+  (mapcar #'+ x y))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of list routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;exchanges the n'th element of a and b
 ;; Returns the modified a,b in a list
-(defun exchange(n a b)
-"Creates new values and swaps."
-  (let ((temp (nth n b))
-	(newa a)
-	(newb b))	
-    (setf (nth n newb) (nth n a))
-    (setf (nth n newa) (nth n b))
-    (list newa newb)
-    ))
+;; (defun exchange(n a b)
+;; "Creates new values and swaps."
+;;   (let ((temp (nth n b))
+;; 	(newa a)
+;; 	(newb b))	
+;;     (setf (nth n newb) (nth n a))
+;;     (setf (nth n newa) (nth n b))
+;;     (list newa newb)
+;;     ))
 
 
+(defmacro swap (a b)
+  `(psetf ,a ,b  ;;todo look this up
+          ,b ,a))
+ 
+(defun exchange (index list-a list-b)
+  "Conses two new lists and swaps their respective elements at index."
+  (let ((new-a (copy-list list-a))
+        (new-b (copy-list list-b)))
+    (swap (nth index new-a)
+          (nth index new-b))))
+ 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of fuzzy routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -85,12 +100,12 @@ append the atom to the flattened rest"
   (cond 
     ((and (numberp a) (numberp b))	;If both are numbers
      (fuzzy-close a b))
-    ((and (listp a) (listp b))			;If both are lists
+    ((and (listp a) (listp b))	        ;If both are lists
      (fuzzy-equal-lists a b))
-    (t nil)))								;Otherwise nil out.
+    (t nil)))				;otherwise nil out.
 
 
-(defun euclidian (x1 x2)
+(defun euclidean (x1 x2)
   "euclidean distance"
   (sqrt 
    (reduce '+ 
@@ -98,10 +113,6 @@ append the atom to the flattened rest"
 		#'(lambda (a b) (sqr (-  a  b)))
 		x1
 		x2))))
-
-(defun distance (a b)
-  "Standard 1-D euclidean distance"
-  (sqrt (sqr (- a  b))))
 
 ;degree of equality of the two trees
 ;Will recurse.  ;;TODO: But doesn't!!! dun dun dun
@@ -130,21 +141,11 @@ append the atom to the flattened rest"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-;where n is the number of elements, m is the range
-;;TODO: WHO AM I?
-(defun generate-rand-list (n m)
-    (setq temp nil)
-    (loop      
-     (setq temp (append (list (random m (make-random-state t))) temp))
-     (setq n (- n 1))
-     (when (= n 0) (return)))
-    temp)
-
-(make-random-state t)
-(defun getrand (max)
-  "Returns between 0 and max."
-	(random max))
-
+(defun generate-random-list (length max)
+  (loop for n from 0 below length
+        for x = (random m)
+        collect x))
+ 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;The actual GP routines
@@ -152,93 +153,90 @@ append the atom to the flattened rest"
 
 
 
-(defun check-similarity ()
-  (let 
-      ((i 1) 
-       (dummy-tree (new-tree 4))
-       test-value)    
-  (loop 
-   (setq x i)
-   (setq test-value (eval-tree dummy-tree))
-   (format t "~a\n" test-value)
-   (setq i (+ i 1))
-   (when (eq i 100) (return)))))
+;; (defun check-similarity ()
+;;   (let 
+;;       ((i 1) 
+;;        (dummy-tree (new-tree 4))
+;;        test-value)    
+;;   (loop 
+;;    (setq x i)
+;;    (setq test-value (eval-tree dummy-tree))
+;;    (format t "~a\n" test-value)
+;;    (setq i (+ i 1))
+;;    (when (eq i 100) (return)))))
 
 
 
 ;these are our operations
 ;binary operations
-(setq bin-op-list '(+ - * /))
+(defvar *binary-operator-list* '(+ - * /))
 ;unary operations
-(setq un-op-list '(1+ sin cos log exp abs sqr sqrt))
-
-;sets up a list with the n'th binary operation and params 
-(defun bin-term-create (n p1 p2)
-  (list (nth n bin-op-list) p1 p2))
-
-;Like bin-term-create, but with unary operations
-(defun un-term-create (n p1)
-  (list (nth n un-op-list) p1))
-
-
-(defmacro create-random-unary (var)
-  `(list (nth (getrand (length un-op-list)) un-op-list) ,var))
-(defmacro create-random-bin (var1 var2)
-  `(list (nth (getrand (length bin-op-list)) bin-op-list) ,var1 ,var2))
-
+(defvar *unary-operator-list* '(1+ sin cos log exp abs sqr sqrt))
+ 
+(defun create-binary-term (n p1 p2)
+  "Creates a list with the n'th binary operation and parameters p1 and p2."
+  (list (nth n *binary-operator-list*) p1 p2))
+ 
+(defun create-unary-term (n p1)
+  "Creates a list with the n'th unary operation and parameter p1"
+  (list (nth n *unary-operator-list*) p1))
+ 
+(defun create-random-unary (var)
+  (create-unary-term (random (length *unary-operator-list*)) var))
+ 
+(defun create-random-binary (var1 var2)
+  (create-binary-term (random (length *binary-operator-list*)) var1 var2))
+ 
 
 ;creates a random operation with unevaluated params p1, and p2
 (defun rand-tree-node ()
   (if (shake-p)
-      (create-random-bin 'x 'x)
+      (create-random-binary 'x 'x)
     (create-random-unary 'x)))
 
 ;Sets the left leaf of parent to 'leaf
 (defun set-left-leaf (parent leaf)
   (setf (nth 1 parent) leaf))
 
-;Sets the right leaf of parent to 'leaf(
+;Sets the right leaf of parent to 'leaf
 (defun set-right-leaf (parent leaf)
   (setf (nth 2 parent) leaf))
 
 
+(defparameter *expand-probability* 0.7)
+ 
 (defun shake-p ()
-  "Shakes according to a specific predicate"
-  (> (getrand 10) 7))
-
+  "General dice roll for determining whether something should be
+expanded."
+  (> (random 1.0) *expand-probability*))
 ;;;uses x as an independant variable
 ;;Adds depth d to node node. Recursive
+
 (defun make-tree (node depth)
   (if (eq (length node) 3) ;Is it of the form (op arg1 arg2)
       ;;Can we go deeper?
       (if (eq depth 0)
-	  ;;this case is simple. Terminals only
-	  (progn (setf (nth 1 node) 'x)      
-		 (setf (nth 2 node) 'x))
-	
-	;;This case is the interesting one
-	(progn
-	  ;;The left node
-	  (if (shake-p)
-	      (setf (nth 1 node) 'x)	    
-	    (setf (nth 1 node) (make-tree (rand-tree-node) (- depth 1))))	  
-	  ;;the right node
-	  (if (shake-p)
-	      (setf (nth 2 node) 'x)
-	    (setf (nth 2 node) (make-tree (rand-tree-node) (- depth 1))))))    
-
-    ;;Is it of the form (op arg1)
-    (progn 
+          ;;this case is simple. Terminals only
+          (setf (nth 1 node) 'x
+                (nth 2 node) 'x)
+          ;;This case is the interesting one
+	(mapcar (lambda (leaf-setter)
+		  (funcall leaf-setter node
+			   (if (shake-p)
+			       'x
+			     (make-tree (rand-tree-node) (- depth 1)))))
+		'(set-left-leaf  set-right-leaf)))
+      ;;Is it of the form (op arg1)
       ;;Can we go deeper?
       (if (eq depth 0)
-	  ;;this case is simple. Terminals only
-	  (setf (nth 1 node) 'x)
-	;;This case is the interesting one
-	(progn
-	  ;;The center node
-	  (if (shake-p) ;;seventy percent.
-	      (setf (nth 1 node) 'x)
-	    (setf (nth 1 node) (make-tree (rand-tree-node) (- depth 1))))))))
+          ;;this case is simple. Terminals only
+          (set-left-leaf node 'x)
+          ;;This case is the interesting one
+          ;;The center node
+          (set-left-leaf node
+                         (if (shake-p)
+                             'x
+                             (make-tree (rand-tree-node) (- depth 1))))))
   node);end of function- returns node
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -281,33 +279,58 @@ append the atom to the flattened rest"
 and columns"
   (apply #'mapcar #'list list-of-lists))
 
-(setq others '(((1 2 3) (4 5 6))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun make-tree-lambda (depth)
+  (list 'lambda '(x)
+        (new-tree depth)))
+
+(defun make-tree-function (lambda-tree)
+  (eval lambda-tree))
+
+(defun eval-fitness (lambda-form-list input-output-list)
+  "Determines how well the lambda forms approach the wanted function
+by comparing their output with the wanted output in the supplied test
+cases.  Returns a list of mean quadratic error sums."
+  (mapcar (lambda (lambda-form)
+            (let* ((actual-results (mapcar (make-tree-function lambda-form)
+                                           (mapcar #'first input-output-list)))
+                   (differences (mapcar #'-
+                                        actual-results
+                                        (mapcar #'second input-output-list)))
+                   (squared-differences (mapcar #'square
+                                                differences)))
+              (/ (reduce #'+ squared-differences)
+                 (length squared-differences))))
+          lambda-form-list))
+
+(defun tree-fitness (tree-list input-output-list)
+  "Creates a list of lists, each inner list is (tree fitness). Input
+is a list of trees, and a list of test cases."
+  (mapcar (lambda (tree fitness)
+            (list tree fitness))
+          tree-list
+          (eval-fitness (mapcar #'make-tree-lambda tree-list)
+                        input-output-list)))
+
+(defvar tree (make-tree-lambda 10))
+
+(setq tree (make-tree-lambda 4))
+
+(funcall (make-tree-function  (make-tree-lambda 4)) 1)
+
+(defvar others '(((1 2 3) (4 5 6))
 	       ('a 'b) 
 	       (11 12)
 	       (8 9)))
 
 
 
+(make-tree-function (new-tree 3))
 
 
 
-(setf dummy2 (make-trees 1))
-(setf dummy3 (make-functions-macro dummy2))
-;(setq samples
-      (let* ((treelist (make-trees 2))
-	     (taus (make-functions-macro treelist))
-	     (tau-evaled (eval-trees taus (range 2 10))))
-	(rotate (list treelist taus tau-evaled))))
-
-(setq sample 
-      (let* ((trees (make-trees 2))
-	     (tree-bindings (bind-trees trees))
-	     (evaluated-trees (eval-fitness tree-bindings))))
-      (list (trees tree-bindings evaluated-trees)))
       
-;(car samples)
-
-;; (setq treelist2 (eval `(make-trees 2)))
+;(defvar treelist2 (eval `(make-trees 2)))
 ;; (setq taus2 (make-functions-macro treelist2))
 ;; (setq tau-evaled2 (eval-trees taus2 (range 2 10)))
 ;; (rotate (list treelist2 taus2 tau-evaled2))
@@ -329,6 +352,3 @@ and columns"
 ;; (euclidian want-result a-result)
 ;; (euclidian want-result b-result)
 ;; (euclidian want-result c-result)
-
-
- 
