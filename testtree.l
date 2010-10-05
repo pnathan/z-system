@@ -38,7 +38,7 @@ append the atom to the flattened rest"
 	(append (list (car tree)) (flatten (cdr tree)))
       (append (flatten (car tree)) (flatten (cdr tree ))))))
 
-(defun sqr (x) 
+(defun square (x) 
   "squares x"
   (* x x))
 
@@ -110,7 +110,7 @@ append the atom to the flattened rest"
   (sqrt 
    (reduce '+ 
 	   (map 'list 
-		#'(lambda (a b) (sqr (-  a  b)))
+		#'(lambda (a b) (square (-  a  b)))
 		x1
 		x2))))
 
@@ -171,7 +171,7 @@ append the atom to the flattened rest"
 ;binary operations
 (defvar *binary-operator-list* '(+ - * /))
 ;unary operations
-(defvar *unary-operator-list* '(1+ sin cos log exp abs sqr sqrt))
+(defvar *unary-operator-list* '(1+ sin cos log exp abs square sqrt))
  
 (defun create-binary-term (n p1 p2)
   "Creates a list with the n'th binary operation and parameters p1 and p2."
@@ -243,41 +243,41 @@ expanded."
 ;The interface for Lisp.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun new-tree ( x )
-  (make-tree (rand-tree-node) x))
+;; (defun new-tree ( x )
+;;   (make-tree (rand-tree-node) x))
 
-(defmacro generate-lambda-tree(n)
-  "Generates a tree and returns the lambda of its function"
-  `(lambda (X)
-       ,(new-tree n)))
+;; (defmacro generate-lambda-tree(n)
+;;   "Generates a tree and returns the lambda of its function"
+;;   `(lambda (X)
+;;        ,(new-tree n)))
 
-;;Turns a tree into a lambda
-(defmacro tree-to-lambda(tree)
-  "Takes a tree and turns it into the lambda of its function"
-  (eval ``(lambda (X) 
-     ,,tree)))
+;; ;;Turns a tree into a lambda
+;; (defmacro tree-to-lambda(tree)
+;;   "Takes a tree and turns it into the lambda of its function"
+;;   (eval ``(lambda (X) 
+;;      ,,tree)))
 
-(defun make-trees (n)
-  "Makes n trees"
-  (if (> n 0) 
-      (cons (new-tree 2) (make-trees (- n 1)))))
+;; (defun make-trees (n)
+;;   "Makes n trees"
+;;   (if (> n 0) 
+;;       (cons (new-tree 2) (make-trees (- n 1)))))
 
-(defmacro make-functions-macro (tree)
-  `(if ,tree
-      (cons 
-       (tree-to-lambda (car ,tree))
-       (make-functions-macro (cdr ,tree)))))
+;; (defmacro make-functions-macro (tree)
+;;   `(if ,tree
+;;       (cons 
+;;        (tree-to-lambda (car ,tree))
+;;        (make-functions-macro (cdr ,tree)))))
 
-(defun eval-trees (tau-list inputs)
-  (if tau-list
-      (cons
-       (mapcar (car tau-list) inputs)
-       (eval-trees (cdr tau-list) inputs))))
+;; (defun eval-trees (tau-list inputs)
+;;   (if tau-list
+;;       (cons
+;;        (mapcar (car tau-list) inputs)
+;;        (eval-trees (cdr tau-list) inputs))))
 
-(defun rotate (&rest list-of-lists)
-  "Suppose each list was a row in a matrix. Then rotate swaps the rows
-and columns"
-  (apply #'mapcar #'list list-of-lists))
+;; ;(defun rotate (&rest list-of-lists)
+;; ;  "Suppose each list was a row in a matrix. Then rotate swaps the rows
+;; ;and columns"
+;; ;  (apply #'mapcar #'list list-of-lists))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun make-tree-lambda (depth)
@@ -286,6 +286,10 @@ and columns"
 
 (defun make-tree-function (lambda-tree)
   (eval lambda-tree))
+
+(defun eval-tree-function (lambda-tree val)
+  "Evaluates a tree function with val"
+  (funcall lambda-tree val))
 
 (defun eval-fitness (lambda-form-list input-output-list)
   "Determines how well the lambda forms approach the wanted function
@@ -312,43 +316,26 @@ is a list of trees, and a list of test cases."
           (eval-fitness (mapcar #'make-tree-lambda tree-list)
                         input-output-list)))
 
-(defvar tree (make-tree-lambda 10))
 
-(setq tree (make-tree-lambda 4))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(funcall (make-tree-function  (make-tree-lambda 4)) 1)
+(defclass genetic-function ()
+  ((compiled
+   :accessor compiled)
+   (representation
+    :accessor representation)))
 
-(defvar others '(((1 2 3) (4 5 6))
-	       ('a 'b) 
-	       (11 12)
-	       (8 9)))
+(defun construct-functions (depth)
+  "Generates a Genetic Function object. Contains both the lambda and the compiled function"
+  (let ((gf (make-instance 'genetic-function)))
+    (setf (representation gf) (make-tree-lambda depth))
+    (setf (compiled gf) (make-tree-function (representation gf)))
+    gf))
 
+(defun call ((obj genetic-function) arg)
+  (funcall (compiled obj) arg))
 
+(defun yield-list (obj input-list)
+  (mapcar #'(lambda (x) (call obj x))
+	  input-list))
 
-(make-tree-function (new-tree 3))
-
-
-
-      
-;(defvar treelist2 (eval `(make-trees 2)))
-;; (setq taus2 (make-functions-macro treelist2))
-;; (setq tau-evaled2 (eval-trees taus2 (range 2 10)))
-;; (rotate (list treelist2 taus2 tau-evaled2))
-
-;(make-trees 2)
-;(macroexpand-1 '(make-trees 2))
-;(setq samples (return-sample 2))
-
-;(rotate samples)
-
-
-
-;; (setq a-result (mapcar (tree-to-lambda treea) (range 2 10)))
-;; (setq b-result (mapcar (tree-to-lambda treeb) (range 2 10)))
-;; (setq c-result (mapcar (tree-to-lambda treec) (range 2 10)))
-
-;; (setq want-result (mapcar 'want-func (range 2 10)))
-
-;; (euclidian want-result a-result)
-;; (euclidian want-result b-result)
-;; (euclidian want-result c-result)
