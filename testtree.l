@@ -291,39 +291,15 @@ expanded."
   "Evaluates a tree function with val"
   (funcall lambda-tree val))
 
-(defun eval-fitness (lambda-form-list input-output-list)
-  "Determines how well the lambda forms approach the wanted function
-by comparing their output with the wanted output in the supplied test
-cases.  Returns a list of mean quadratic error sums."
-  (mapcar (lambda (lambda-form)
-            (let* ((actual-results (mapcar (make-tree-function lambda-form)
-                                           (mapcar #'first input-output-list)))
-                   (differences (mapcar #'-
-                                        actual-results
-                                        (mapcar #'second input-output-list)))
-                   (squared-differences (mapcar #'square
-                                                differences)))
-              (/ (reduce #'+ squared-differences)
-                 (length squared-differences))))
-          lambda-form-list))
-
-(defun tree-fitness (tree-list input-output-list)
-  "Creates a list of lists, each inner list is (tree fitness). Input
-is a list of trees, and a list of test cases."
-  (mapcar (lambda (tree fitness)
-            (list tree fitness))
-          tree-list
-          (eval-fitness (mapcar #'make-tree-lambda tree-list)
-                        input-output-list)))
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defclass genetic-function ()
   ((compiled
    :accessor compiled)
    (representation
-    :accessor representation)))
+    :accessor representation)
+   (fitness
+    :accessor fitness)))
 
 (defun construct-functions (depth)
   "Generates a Genetic Function object. Contains both the lambda and the compiled function"
@@ -333,9 +309,47 @@ is a list of trees, and a list of test cases."
     gf))
 
 (defun call ((obj genetic-function) arg)
-  (funcall (compiled obj) arg))
+  "Given object and input, generate f(x)"
+  (handler-case 
+   (funcall (compiled obj) arg)
+   (division-by-zero () 0) ;;Ideally NaN
+   (floating-point-overflow () 10e10)
+   (floating-point-underflow () 0)))
+
 
 (defun yield-list (obj input-list)
+  "Given obj and a list of inputs, generate list of outputs f(x[i])"
   (mapcar #'(lambda (x) (call obj x))
 	  input-list))
 
+(defun expected-inputs ()
+  (mapcar #'car *test-input-output*))
+(defun expected-outputs ()
+  (mapcar #'cadr *test-input-output*))
+
+(defun assign-fitness (obj)
+  (setf (fitness obj)
+	(sum-sq-diff (yield-list obj (expected-inputs))
+		     (expected-outputs))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun sum-f-diff (f list1 list2)
+  "Sums the differences between components of lists. Diff is computed
+by the function f"
+  (reduce #'+ 
+	  (mapcar
+	   f
+	   list1 list2)))
+
+(defun sum-sq-diff (list1 list2)
+  (sum-f-diff
+   #'(lambda (x y) 
+       (square (- x y)))
+   list1 list2))
+
+(defun sum-abs-diff (list1 list2)
+  (sum-f-diff
+	   #'(lambda (x y) 
+	       (abs (- x y)))
+	   list1 list2))
