@@ -1,5 +1,15 @@
-;;;;Genetic programming program
-;;;;Let's set up a function tree and evaluate it
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; testtree.l
+;;;; Paul Nathan
+;;;; TESTTREE attempts to 'breed' a matching function to a specified set of values
+;;;; Credit is due to Svante and Rainer Joswig for extensive assistence to a newbie.
+
+
+
+;the function we want
+(defun want-func (x)
+  "Goal function"
+  (+ x 1))
 
 
 (defun range (start end)
@@ -7,26 +17,47 @@
   (loop for n from start below end
         collect n))
 
-;the function we want
-(defun want-func (x)
-  "Goal function"
-  (+ x 1))
-
 (defvar *test-input-output* (mapcar #'(lambda (x) 
 					(list x (want-func x))) 
 				    (range 2 100))
   "The desired results")
 
 
+(defvar *population* '()
+  "The list of functions under examination")
+
+(defun expected-inputs ()
+  "List of the expected inputs"
+  (mapcar #'car *test-input-output*))
+(defun expected-outputs ()
+  "List of the expected outputs"
+  (mapcar #'cadr *test-input-output*))
+
+
+(defun unzip (seq)
+  "Takes an even-length list and breaks it apart by evens/odd index"
+  (let ((oddresult '())
+	(evenresult '()))
+    (loop for n from 0 to (- (length seq) 1) do
+	  (if (oddp n)
+	      (push (nth n seq) oddresult)
+	    (push (nth n seq) evenresult)))
+    (list (reverse oddresult) (reverse evenresult))))
+	    
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;A set of general math routines
+;;; A set of general list/tree routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (defun range (s e)
-;;   (unless (= s e)
-;;       (cons s  (range (+ 1 s) e))))
+(defun final (L)
+  "Returns the last element of L"
+  (car (last L)))
+
+(defun range (start end)
+  (assert (<= start end))
+  (loop for n from start below end
+        collect n))
 
 
 (defun flatten (tree)
@@ -38,6 +69,51 @@ append the atom to the flattened rest"
 	(append (list (car tree)) (flatten (cdr tree)))
       (append (flatten (car tree)) (flatten (cdr tree ))))))
 
+
+(defmacro swap (a b) 
+  ;;Parallel setf
+  `(psetf ,a ,b 
+          ,b ,a))
+ 
+(defun exchange (index list-a list-b)
+  "Conses two new lists and swaps their respective elements at index."
+  (let ((new-a (copy-list list-a))
+        (new-b (copy-list list-b)))
+    (swap (nth index new-a)
+          (nth index new-b))
+    (list new-a new-b)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Give the difference between two lists
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun sum-f-diff (f list1 list2)
+  "Sums the differences between components of lists. Diff is computed
+by the function f"
+  (reduce #'+ 
+	  (mapcar
+	   f
+	   list1 list2)))
+
+(defun sum-sq-diff (list1 list2)
+  (sum-f-diff
+   #'(lambda (x y) 
+       (square (- x y)))
+   list1 list2))
+
+(defun sum-abs-diff (list1 list2)
+  (sum-f-diff
+	   #'(lambda (x y) 
+	       (abs (- x y)))
+	   list1 list2))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;A set of general math routines
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun square (x) 
   "squares x"
   (* x x))
@@ -45,6 +121,17 @@ append the atom to the flattened rest"
 (defun sum-list(l)
   "Sum the entire list"
   (reduce '+ l))
+
+
+(defun euclidean (x1 x2)
+  "euclidean distance"
+  (sqrt 
+   (reduce '+ 
+	   (map 'list 
+		#'(lambda (a b) (square (-  a  b)))
+		x1
+		x2))))
+
 
 ;(a + b) / 2
 (defun average (a b) 
@@ -57,41 +144,13 @@ append the atom to the flattened rest"
     (/ (sum-list newlist)
        (list-length l))))
 
-;;;component-wise addition I think...
-;;TODO: Rewrite as one of the map* family
-;;mapcar #'+ x y
+;;;component-wise addition 
 (defun addlists (x y)
   (mapcar #'+ x y))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;A set of list routines
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;exchanges the n'th element of a and b
-;; Returns the modified a,b in a list
-;; (defun exchange(n a b)
-;; "Creates new values and swaps."
-;;   (let ((temp (nth n b))
-;; 	(newa a)
-;; 	(newb b))	
-;;     (setf (nth n newb) (nth n a))
-;;     (setf (nth n newa) (nth n b))
-;;     (list newa newb)
-;;     ))
-
-
-(defmacro swap (a b)
-  `(psetf ,a ,b  ;;todo look this up
-          ,b ,a))
- 
-(defun exchange (index list-a list-b)
-  "Conses two new lists and swaps their respective elements at index."
-  (let ((new-a (copy-list list-a))
-        (new-b (copy-list list-b)))
-    (swap (nth index new-a)
-          (nth index new-b))))
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;A set of fuzzy routines
+;A set of routines to do an 'imprecise' analysis of the trees.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;fuzzy closeness is needed. [0, 1] 
@@ -105,15 +164,6 @@ append the atom to the flattened rest"
     (t nil)))				;otherwise nil out.
 
 
-(defun euclidean (x1 x2)
-  "euclidean distance"
-  (sqrt 
-   (reduce '+ 
-	   (map 'list 
-		#'(lambda (a b) (square (-  a  b)))
-		x1
-		x2))))
-
 ;degree of equality of the two trees
 ;Will recurse.  ;;TODO: But doesn't!!! dun dun dun
 (defun fuzzy-equal-trees (a b)
@@ -124,20 +174,23 @@ append the atom to the flattened rest"
     (progn       
 	(average-list (mapcar 'fuzzy-equal a  b)))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;Dissertating on the trees equality - 
 ;; Shape equality
 ;; shape-value equality
 ;; flattened, ordered, value equality 		
 ;; flattened-unordered equality
 
-;;honking slow
+;;
 (defun generic-le (a b)
+  "Compares using the string representation of the objects.  Primarily
+useful when some sort, any sort, is wanted"
   (let ((str-a (format nil "~a" a))
 	(str-b (format nil "~a" b)))
     ( numberp (STRING< str-a str-b))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;A set of random routines
+;A set of randomness routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -148,26 +201,15 @@ append the atom to the flattened rest"
  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;The actual GP routines
+;;; Function construction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;
+(defparameter *expand-probability* 0.7 
+  "Parameter of random expansion")
 
 
-;; (defun check-similarity ()
-;;   (let 
-;;       ((i 1) 
-;;        (dummy-tree (new-tree 4))
-;;        test-value)    
-;;   (loop 
-;;    (setq x i)
-;;    (setq test-value (eval-tree dummy-tree))
-;;    (format t "~a\n" test-value)
-;;    (setq i (+ i 1))
-;;    (when (eq i 100) (return)))))
-
-
-
-;these are our operations
+;;these are the operations we can use in our functions
 ;binary operations
 (defvar *binary-operator-list* '(+ - * /))
 ;unary operations
@@ -202,15 +244,11 @@ append the atom to the flattened rest"
 (defun set-right-leaf (parent leaf)
   (setf (nth 2 parent) leaf))
 
-
-(defparameter *expand-probability* 0.7)
  
 (defun shake-p ()
   "General dice roll for determining whether something should be
 expanded."
   (> (random 1.0) *expand-probability*))
-;;;uses x as an independant variable
-;;Adds depth d to node node. Recursive
 
 (defun make-tree (node depth)
   (if (eq (length node) 3) ;Is it of the form (op arg1 arg2)
@@ -219,7 +257,7 @@ expanded."
           ;;this case is simple. Terminals only
           (setf (nth 1 node) 'x
                 (nth 2 node) 'x)
-          ;;This case is the interesting one
+	;;This case is the interesting one
 	(mapcar (lambda (leaf-setter)
 		  (funcall leaf-setter node
 			   (if (shake-p)
@@ -232,54 +270,21 @@ expanded."
           ;;this case is simple. Terminals only
           (set-left-leaf node 'x)
           ;;This case is the interesting one
-          ;;The center node
           (set-left-leaf node
                          (if (shake-p)
                              'x
                              (make-tree (rand-tree-node) (- depth 1))))))
   node);end of function- returns node
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;The interface for Lisp.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; (defun new-tree ( x )
-;;   (make-tree (rand-tree-node) x))
-
-;; (defmacro generate-lambda-tree(n)
-;;   "Generates a tree and returns the lambda of its function"
-;;   `(lambda (X)
-;;        ,(new-tree n)))
-
-;; ;;Turns a tree into a lambda
-;; (defmacro tree-to-lambda(tree)
-;;   "Takes a tree and turns it into the lambda of its function"
-;;   (eval ``(lambda (X) 
-;;      ,,tree)))
-
-;; (defun make-trees (n)
-;;   "Makes n trees"
-;;   (if (> n 0) 
-;;       (cons (new-tree 2) (make-trees (- n 1)))))
-
-;; (defmacro make-functions-macro (tree)
-;;   `(if ,tree
-;;       (cons 
-;;        (tree-to-lambda (car ,tree))
-;;        (make-functions-macro (cdr ,tree)))))
-
-;; (defun eval-trees (tau-list inputs)
-;;   (if tau-list
-;;       (cons
-;;        (mapcar (car tau-list) inputs)
-;;        (eval-trees (cdr tau-list) inputs))))
-
-;; ;(defun rotate (&rest list-of-lists)
-;; ;  "Suppose each list was a row in a matrix. Then rotate swaps the rows
-;; ;and columns"
-;; ;  (apply #'mapcar #'list list-of-lists))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Build a evaluation framework 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun new-tree ( x )
+  (make-tree (rand-tree-node) x))
+
+
 (defun make-tree-lambda (depth)
   (list 'lambda '(x)
         (new-tree depth)))
@@ -290,8 +295,6 @@ expanded."
 (defun eval-tree-function (lambda-tree val)
   "Evaluates a tree function with val"
   (funcall lambda-tree val))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defclass genetic-function ()
   ((compiled
@@ -322,34 +325,47 @@ expanded."
   (mapcar #'(lambda (x) (call obj x))
 	  input-list))
 
-(defun expected-inputs ()
-  (mapcar #'car *test-input-output*))
-(defun expected-outputs ()
-  (mapcar #'cadr *test-input-output*))
-
 (defun assign-fitness (obj)
   (setf (fitness obj)
 	(sum-sq-diff (yield-list obj (expected-inputs))
 		     (expected-outputs))))
 
+(defun compare-genetic (a b &optional (sort-function '<))
+  (funcall sort-function (fitness a) (fitness b)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defun sum-f-diff (f list1 list2)
-  "Sums the differences between components of lists. Diff is computed
-by the function f"
-  (reduce #'+ 
-	  (mapcar
-	   f
-	   list1 list2)))
+(defun build-function-list (depth count)
+  "Generates count function objects of tree-depth depth"
+  (mapcar
+   #'(lambda (x) (construct-functions depth)) 
+   (range 0 count)))
 
-(defun sum-sq-diff (list1 list2)
-  (sum-f-diff
-   #'(lambda (x y) 
-       (square (- x y)))
-   list1 list2))
+(defun best-half (list-of-objs)
+  "Takes the best half of the objects"
+  (butlast 
+   (sort list-of-objs 'compare-genetic) 
+   (/ (length list-of-objs ) 2)))
 
-(defun sum-abs-diff (list1 list2)
-  (sum-f-diff
-	   #'(lambda (x y) 
-	       (abs (- x y)))
-	   list1 list2))
+(defun breed (parent1 parent2)
+  "Breeds the two objects and takes the offspring"
+  (let
+      ((gf (make-instance 'genetic-function)))
+    (setf (representation gf)
+	  (breed-trees (representation parent1) (representation parent2)))
+    (setf (compiled gf) (make-tree-function (representation gf)))
+    gf))
+
+(defun breed-trees (parent1 parent2)
+  (if (or 
+       (= (length parent2) 2)
+       (= (length parent1) 1))
+      (exchange (random 2) parent1 parent2)
+    (car (exchange (random 3) parent1 parent2))))
+  
+(defun breed-list (list-of-objs)
+  (if (zerop (mod (length list-of-objs) 2))
+      (mapcar 'breed-trees (unzip list-of-objs))
+    (mapcar 'breed-trees (unzip (butlast list-of-objs)))))
+
+;;; Now for the real work!
+(setf *population* (build-function-list 3 10)) ;
+(mapc 'assign-fitness *population*)
