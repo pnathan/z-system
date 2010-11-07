@@ -17,14 +17,17 @@
   (loop for n from start below end
         collect n))
 
-(defvar *test-input-output* (mapcar #'(lambda (x) 
-					(list x (want-func x))) 
+(defvar *test-input-output* (mapcar #'(lambda (x)
+					(list x (want-func x)))
 				    (range 2 100))
   "The desired results")
 
 
 (defvar *population* '()
   "The list of functions under examination")
+
+(defvar *next-gen*
+  "the next generation of population members")
 
 (defun expected-inputs ()
   "List of the expected inputs"
@@ -43,7 +46,7 @@
 	      (push (nth n seq) oddresult)
 	    (push (nth n seq) evenresult)))
     (list (reverse oddresult) (reverse evenresult))))
-	    
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -70,11 +73,11 @@ append the atom to the flattened rest"
       (append (flatten (car tree)) (flatten (cdr tree ))))))
 
 
-(defmacro swap (a b) 
+(defmacro swap (a b)
   ;;Parallel setf
-  `(psetf ,a ,b 
+  `(psetf ,a ,b
           ,b ,a))
- 
+
 (defun exchange (index list-a list-b)
   "Conses two new lists and swaps their respective elements at index."
   (let ((new-a (copy-list list-a))
@@ -83,7 +86,6 @@ append the atom to the flattened rest"
           (nth index new-b))
     (list new-a new-b)))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Give the difference between two lists
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -91,20 +93,20 @@ append the atom to the flattened rest"
 (defun sum-f-diff (f list1 list2)
   "Sums the differences between components of lists. Diff is computed
 by the function f"
-  (reduce #'+ 
+  (reduce #'+
 	  (mapcar
 	   f
 	   list1 list2)))
 
 (defun sum-sq-diff (list1 list2)
   (sum-f-diff
-   #'(lambda (x y) 
+   #'(lambda (x y)
        (square (- x y)))
    list1 list2))
 
 (defun sum-abs-diff (list1 list2)
   (sum-f-diff
-	   #'(lambda (x y) 
+	   #'(lambda (x y)
 	       (abs (- x y)))
 	   list1 list2))
 
@@ -114,7 +116,7 @@ by the function f"
 ;;;A set of general math routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun square (x) 
+(defun square (x)
   "squares x"
   (* x x))
 
@@ -125,38 +127,39 @@ by the function f"
 
 (defun euclidean (x1 x2)
   "euclidean distance"
-  (sqrt 
-   (reduce '+ 
-	   (map 'list 
-		#'(lambda (a b) (square (-  a  b)))
+  (sqrt
+   (reduce '+
+	   (map 'list
+		#'(lambda (a b) 
+		    (square 
+		     (-  a  b)))
 		x1
 		x2))))
 
 
 ;(a + b) / 2
-(defun average (a b) 
+(defun average (a b)
   ( / (+ a b) 2))
 
 
-(defun average-list (l) 
+(defun average-list (l)
   "gets the average of a list"
-  (let ((newlist (flatten l)))
-    (/ (sum-list newlist)
-       (list-length l))))
+  (/ (sum-list l)
+       (list-length l)))
 
-;;;component-wise addition 
+;;;component-wise addition
 (defun addlists (x y)
   (mapcar #'+ x y))
 
- 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;A set of routines to do an 'imprecise' analysis of the trees.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;fuzzy closeness is needed. [0, 1] 
+;fuzzy closeness is needed. [0, 1]
 ;TODO: Check if this can be Reduced.
 (defun fuzzy-equal (a b)
-  (cond 
+  (cond
     ((and (numberp a) (numberp b))	;If both are numbers
      (fuzzy-close a b))
     ((and (listp a) (listp b))	        ;If both are lists
@@ -167,18 +170,18 @@ by the function f"
 ;degree of equality of the two trees
 ;Will recurse.  ;;TODO: But doesn't!!! dun dun dun
 (defun fuzzy-equal-trees (a b)
-  (if (or 
-       (not (equal (length a) (length b)))	;Length must be equal 
+  (if (or
+       (not (equal (length a) (length b)))	;Length must be equal
        (not (and (listp a) (listp b)))) 	;Both must be lists
       nil				      	;fails if condition is not met
-    (progn       
+    (progn
 	(average-list (mapcar 'fuzzy-equal a  b)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;Dissertating on the trees equality - 
+;;;Dissertating on the trees equality -
 ;; Shape equality
 ;; shape-value equality
-;; flattened, ordered, value equality 		
+;; flattened, ordered, value equality
 ;; flattened-unordered equality
 
 ;;
@@ -198,37 +201,42 @@ useful when some sort, any sort, is wanted"
   (loop for n from 0 below length
         for x = (random m)
         collect x))
- 
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Function construction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;
-(defparameter *expand-probability* 0.7 
+(defparameter *expand-probability* 0.7
   "Parameter of random expansion")
 
-
+(defun shake-p ()
+  "General dice roll for determining whether something should be
+expanded."
+  (> (random 1.0) *expand-probability*))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;these are the operations we can use in our functions
 ;binary operations
 (defvar *binary-operator-list* '(+ - * /))
 ;unary operations
 (defvar *unary-operator-list* '(1+ sin cos log exp abs square sqrt))
- 
+
+
 (defun create-binary-term (n p1 p2)
   "Creates a list with the n'th binary operation and parameters p1 and p2."
   (list (nth n *binary-operator-list*) p1 p2))
- 
+
 (defun create-unary-term (n p1)
   "Creates a list with the n'th unary operation and parameter p1"
   (list (nth n *unary-operator-list*) p1))
- 
+
 (defun create-random-unary (var)
   (create-unary-term (random (length *unary-operator-list*)) var))
- 
+
 (defun create-random-binary (var1 var2)
   (create-binary-term (random (length *binary-operator-list*)) var1 var2))
- 
+
 
 ;creates a random operation with unevaluated params p1, and p2
 (defun rand-tree-node ()
@@ -243,12 +251,6 @@ useful when some sort, any sort, is wanted"
 ;Sets the right leaf of parent to 'leaf
 (defun set-right-leaf (parent leaf)
   (setf (nth 2 parent) leaf))
-
- 
-(defun shake-p ()
-  "General dice roll for determining whether something should be
-expanded."
-  (> (random 1.0) *expand-probability*))
 
 (defun make-tree (node depth)
   (if (eq (length node) 3) ;Is it of the form (op arg1 arg2)
@@ -278,7 +280,7 @@ expanded."
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Build a evaluation framework 
+;;; Build a evaluation framework
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun new-tree ( x )
@@ -288,6 +290,7 @@ expanded."
 (defun make-tree-lambda (depth)
   (list 'lambda '(x)
         (new-tree depth)))
+
 
 (defun make-tree-function (lambda-tree)
   (eval lambda-tree))
@@ -304,6 +307,11 @@ expanded."
    (fitness
     :accessor fitness)))
 
+(defun equal-gf (a b)
+  (equal
+   (representation a)
+   (representation b)))
+
 (defun construct-functions (depth)
   "Generates a Genetic Function object. Contains both the lambda and the compiled function"
   (let ((gf (make-instance 'genetic-function)))
@@ -313,11 +321,11 @@ expanded."
 
 (defun call ((obj genetic-function) arg)
   "Given object and input, generate f(x)"
-  (handler-case 
+  (handler-case
    (funcall (compiled obj) arg)
-   (division-by-zero () 0) ;;Ideally NaN
-   (floating-point-overflow () 10e10)
-   (floating-point-underflow () 0)))
+   (division-by-zero () 1e9) ;;Ideally NaN
+   (floating-point-overflow () 1e9)
+   (floating-point-underflow () 1e9)))
 
 
 (defun yield-list (obj input-list)
@@ -328,44 +336,158 @@ expanded."
 (defun assign-fitness (obj)
   (setf (fitness obj)
 	(sum-sq-diff (yield-list obj (expected-inputs))
-		     (expected-outputs))))
+		     (expected-outputs)))
+  obj)
 
 (defun compare-genetic (a b &optional (sort-function '<))
   (funcall sort-function (fitness a) (fitness b)))
 
+(defun return-top-function (seq-objs)
+  (first (sort seq-objs 'compare-genetic)))
+
 (defun build-function-list (depth count)
   "Generates count function objects of tree-depth depth"
   (mapcar
-   #'(lambda (x) (construct-functions depth)) 
+   #'(lambda (x)
+       (assign-fitness (construct-functions depth)))
    (range 0 count)))
 
 (defun best-half (list-of-objs)
   "Takes the best half of the objects"
-  (butlast 
-   (sort list-of-objs 'compare-genetic) 
-   (/ (length list-of-objs ) 2)))
+  (butlast
+   (sort list-of-objs 'compare-genetic)
+   (truncate (/ (length list-of-objs ) 2))))
 
 (defun breed (parent1 parent2)
   "Breeds the two objects and takes the offspring"
   (let
       ((gf (make-instance 'genetic-function)))
     (setf (representation gf)
-	  (breed-trees (representation parent1) (representation parent2)))
+	  (breed-trees
+	   (third (representation parent1) )
+	   (third (representation parent2))))
     (setf (compiled gf) (make-tree-function (representation gf)))
     gf))
 
-(defun breed-trees (parent1 parent2)
-  (if (or 
-       (= (length parent2) 2)
-       (= (length parent1) 1))
-      (exchange (random 2) parent1 parent2)
-    (car (exchange (random 3) parent1 parent2))))
+(defun breed-trees-hack (parent1 parent2)
+  (if (and
+       (consp parent1)
+       (consp parent2))
+      (if (or
+	   (= (length parent2) 2)
+	   (= (length parent1) 2))
+	  ;; either the op or the arg
+	  (if (and
+	       (consp (third parent2))
+	       (consp (third parent1)))
+	      (progn (format t "swappin")
+	      (exchange (random 2)
+			(breed-trees (second parent1) (second parent2))
+			(breed-trees (second parent1) (second parent2))))
+	    )
+	;;randomly pick op, arg1, arg2 to exchange
+	(exchange (random 3) parent1 parent2))))
+
+(defun breed-trees (parent-lambda-1 parent-lambda-2)
+  "Takes (lambda (x) <list>"
   
+  ;;don't recurse into a nil
+  (if (and
+	 (consp parent-lambda-1)
+	 (consp parent-lambda-2))
+      (let ((parent1 (third parent-lambda-1))
+	    (parent2 (third parent-lambda-2)))
+
+	(cond 
+	 ;;If one of the two has form (op arg)
+	 ((or (= (length parent1) 2)
+	      (= (length parent2) 2))
+	  (progn
+	    (format t "one of us are op arg")
+	    ;;swap the first arg
+	    (if (and (consp (second parent1))
+		     (consp (second parent2)))
+		(exchange 1 parent1 parent2))
+	    ;;swap the op
+	    (exchange 0 parent1 parent2)))
+	 ;;if both have form (op arg1 arg2) 
+	 ((and (= (length parent1) 3)
+	       (= (length parent2) 3))
+	  (progn 
+	    (format t "both are op arg arg")
+	    ;;swap the first arg
+	    (if (and (consp (second parent1))
+		     (consp (second parent2)))
+		(exchange 1 parent1 parent2) )
+	    ;;swap the second arg
+	    (if (and (consp (third parent1))
+		     (consp (third parent2)))
+		(exchange 2 parent1 parent2)))))
+	
+	(exchange 0 parent1 parent2))))
+		
+
+
+;(setq f  '(LAMBDA (X) (cos (abs X) )) )
+;(setq g '(lambda (x) (sin (exp x))))
+;(setq g '(LAMBDA (X) (/ (/ X (1+ X)) X)))
+;(let ((random (lambda (x) 0))) (breed-trees f g))
+
+(defun truncate-if-odd-length (seq)
+  (if (zerop (mod (length seq) 2))
+      seq
+    (butlast seq)))
+
 (defun breed-list (list-of-objs)
-  (if (zerop (mod (length list-of-objs) 2))
-      (mapcar 'breed-trees (unzip list-of-objs))
-    (mapcar 'breed-trees (unzip (butlast list-of-objs)))))
+  (mapcar 'assign-fitness
+	  (let ((parent1s (first (unzip (truncate-if-odd-length list-of-objs))))
+		(parent2s (second (unzip (truncate-if-odd-length list-of-objs)))))
+	    (mapcar 'breed parent1s parent2s))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defvar *average-goodness* '())
+
+(defun evolve (generations-left &optional (pop-max 100))
+  (loop for i from 1 to generations-left do
+	(push (average-list (mapcar 'fitness *population*)) *average-goodness*)
+	(setq *next-gen* (breed-list (best-half *population*)))
+	(setq *population* (append *population* *next-gen*))
+	(if (> (length *population*) pop-max)
+	    (setq *population*
+		  (butlast *population*
+			   (- (length *population*) pop-max))))))
+
+(defun evolve-no-trim (generations-left )
+  (loop for i from 1 to generations-left do
+	;; set the current average
+	(push (average-list (mapcar 'fitness *population*)) *average-goodness*)
+	;;do the breeding
+	(setq *next-gen* (breed-list (best-half *population*)))
+	;;add the bred functions to the population
+	(setq *population*
+	      (uniquize
+	       (append *population* *next-gen*)
+	       'equal-gf))))
+
+(defun best-so-far ()
+  (first (sort *population* 'compare-genetic)))
+
+(defun uniquize (seq &optional (test-func 'equal))
+ (if seq
+     (if (not (position (car seq) (cdr seq) :test test-func)) ;if it's unique
+	 (cons
+	  (car seq)
+	  (uniquize (cdr seq) test-func))
+       (uniquize (cdr seq) test-func))))
+
 
 ;;; Now for the real work!
-(setf *population* (build-function-list 3 10)) ;
-(mapc 'assign-fitness *population*)
+(defun seed-population()
+  (setf *population* (build-function-list 3 10)))
+
+
+(defmacro fast-add (seq)
+  (reduce #'+ seq))
