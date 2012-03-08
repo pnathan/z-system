@@ -1,10 +1,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; testtree.l
 ;;;; Paul Nathan
-;;;; TESTTREE attempts to 'breed' a matching function to a specified set of values
+;;;; 2005-2012
+;;;; Z system. Genetic algorithm playground
+;;;; The Z system attempts to 'breed' a matching function to a specified set of values
 ;;;; Credit is due to Svante and Rainer Joswig for extensive assistence to a newbie.
-
-
 
 ;the function we want
 (defun want-func (x)
@@ -32,6 +31,7 @@
 (defun expected-inputs ()
   "List of the expected inputs"
   (mapcar #'car *test-input-output*))
+
 (defun expected-outputs ()
   "List of the expected outputs"
   (mapcar #'cadr *test-input-output*))
@@ -47,22 +47,15 @@
 	    (push (nth n seq) evenresult)))
     (list (reverse oddresult) (reverse evenresult))))
 
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; A set of general list/tree routines
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun final (L)
-  "Returns the last element of L"
-  (car (last L)))
-
 (defun range (start end)
-  (assert (<= start end))
+  (unless (<= start end)
+    (error "Start (~a) must be smaller than the end (~a)" start end))
   (loop for n from start below end
         collect n))
-
-
 (defun flatten (tree)
   "descend into the supplied list until an atom is hit.
 append the atom to the flattened rest"
@@ -71,7 +64,6 @@ append the atom to the flattened rest"
     (if (atom (car tree ))
 	(append (list (car tree)) (flatten (cdr tree)))
       (append (flatten (car tree)) (flatten (cdr tree ))))))
-
 
 (defmacro swap (a b)
   ;;Parallel setf
@@ -93,10 +85,13 @@ append the atom to the flattened rest"
 (defun sum-f-diff (f list1 list2)
   "Sums the differences between components of lists. Diff is computed
 by the function f"
-  (reduce #'+
-	  (mapcar
-	   f
-	   list1 list2)))
+  (handler-case
+      (reduce #'+
+	      (mapcar
+	       f
+	       list1 list2))
+    (floating-point-overflow () 1e19)))	; It's huge. Just make it huge
+					; and run
 
 (defun sum-sq-diff (list1 list2)
   (sum-f-diff
@@ -127,11 +122,12 @@ by the function f"
 
 (defun euclidean (x1 x2)
   "euclidean distance"
+  ;; Meditate on the binary tree possibilities here.
   (sqrt
    (reduce '+
-	   (map 'list
-		#'(lambda (a b) 
-		    (square 
+	   (mapcar
+		#'(lambda (a b)
+		    (square
 		     (-  a  b)))
 		x1
 		x2))))
@@ -199,7 +195,7 @@ useful when some sort, any sort, is wanted"
 
 (defun generate-random-list (length max)
   (loop for n from 0 below length
-        for x = (random m)
+        for x = (random max)
         collect x))
 
 
@@ -307,6 +303,9 @@ expanded."
    (fitness
     :accessor fitness)))
 
+(defmethod print-object ((obj genetic-function) (stream t))
+  (format stream "<#generic-function ~a ~a>"   (fitness obj) (representation obj)))
+
 (defun equal-gf (a b)
   (equal
    (representation a)
@@ -319,23 +318,23 @@ expanded."
     (setf (compiled gf) (make-tree-function (representation gf)))
     gf))
 
-(defun call ((obj genetic-function) arg)
+(defmethod call ((obj genetic-function) arg)
   "Given object and input, generate f(x)"
   (handler-case
-   (funcall (compiled obj) arg)
-   (division-by-zero () 1e9) ;;Ideally NaN
-   (floating-point-overflow () 1e9)
-   (floating-point-underflow () 1e9)))
+      (funcall (compiled obj) arg)
+    (division-by-zero () 1e9) ;;Ideally NaN
+    (floating-point-overflow () 1e9)
+    (floating-point-underflow () 1e9)))
 
 
-(defun yield-list (obj input-list)
+(defun execute-list (obj input-list)
   "Given obj and a list of inputs, generate list of outputs f(x[i])"
   (mapcar #'(lambda (x) (call obj x))
 	  input-list))
 
 (defun assign-fitness (obj)
   (setf (fitness obj)
-	(sum-sq-diff (yield-list obj (expected-inputs))
+	(sum-sq-diff (execute-list obj (expected-inputs))
 		     (expected-outputs)))
   obj)
 
@@ -390,7 +389,7 @@ expanded."
 
 (defun breed-trees (parent-lambda-1 parent-lambda-2)
   "Takes (lambda (x) <list>"
-  
+
   ;;don't recurse into a nil
   (if (and
 	 (consp parent-lambda-1)
@@ -398,7 +397,7 @@ expanded."
       (let ((parent1 (third parent-lambda-1))
 	    (parent2 (third parent-lambda-2)))
 
-	(cond 
+	(cond
 	 ;;If one of the two has form (op arg)
 	 ((or (= (length parent1) 2)
 	      (= (length parent2) 2))
@@ -410,10 +409,10 @@ expanded."
 		(exchange 1 parent1 parent2))
 	    ;;swap the op
 	    (exchange 0 parent1 parent2)))
-	 ;;if both have form (op arg1 arg2) 
+	 ;;if both have form (op arg1 arg2)
 	 ((and (= (length parent1) 3)
 	       (= (length parent2) 3))
-	  (progn 
+	  (progn
 	    (format t "both are op arg arg")
 	    ;;swap the first arg
 	    (if (and (consp (second parent1))
@@ -423,9 +422,9 @@ expanded."
 	    (if (and (consp (third parent1))
 		     (consp (third parent2)))
 		(exchange 2 parent1 parent2)))))
-	
+
 	(exchange 0 parent1 parent2))))
-		
+
 
 
 ;(setq f  '(LAMBDA (X) (cos (abs X) )) )
