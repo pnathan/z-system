@@ -1,41 +1,23 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Paul Nathan
-;;;; 2005-2012
+;;;; 2005-2013
 ;;;; Z system. Genetic algorithm playground
 ;;;; The Z system attempts to 'breed' a matching function to a specified set of values
-;;;; Credit is due to Svante and Rainer Joswig for extensive assistence to a newbie.
+;;;;
+;;;; Credit is due to Svante, Rainer Joswig, and other users of Stack
+;;;; Overflow for extensive assistence to a newbie taking on a
+;;;; too-hard project.
+;;;;
+;;;; License: AGPL3.
 
-;the function we want
-(defun want-func (x)
-  "Goal function"
-  (+ x 1))
+
+(ql:quickload :alexandria)
 
 
 (defun range (start end)
   (assert (<= start end))
   (loop for n from start below end
         collect n))
-
-(defvar *test-input-output* (mapcar #'(lambda (x)
-					(list x (want-func x)))
-				    (range 2 100))
-  "The desired results")
-
-
-(defvar *population* '()
-  "The list of functions under examination")
-
-(defvar *next-gen*
-  "the next generation of population members")
-
-(defun expected-inputs ()
-  "List of the expected inputs"
-  (mapcar #'car *test-input-output*))
-
-(defun expected-outputs ()
-  "List of the expected outputs"
-  (mapcar #'cadr *test-input-output*))
-
 
 (defun unzip (seq)
   "Takes an even-length list and breaks it apart by evens/odd index"
@@ -76,7 +58,7 @@ append the atom to the flattened rest"
         (new-b (copy-list list-b)))
     (swap (nth index new-a)
           (nth index new-b))
-    (list new-a new-b)))
+    (values new-a new-b)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Give the difference between two lists
@@ -85,19 +67,22 @@ append the atom to the flattened rest"
 (defun sum-f-diff (f list1 list2)
   "Sums the differences between components of lists. Diff is computed
 by the function f"
-  (handler-case
-      (reduce #'+
-	      (mapcar
-	       f
+  (unless (or (position nil list1)
+              (position nil list1))
+
+    (handler-case
+        (reduce #'+
+                (mapcar
+                 f
 	       list1 list2))
-    (floating-point-overflow () 1e19)))	; It's huge. Just make it huge
-					; and run
+      (floating-point-overflow () nil))))
 
 (defun sum-sq-diff (list1 list2)
-  (sum-f-diff
-   #'(lambda (x y)
-       (square (- x y)))
-   list1 list2))
+  "Sum of the squares of the differences. "
+    (sum-f-diff
+     #'(lambda (x y)
+         (square (- x y)))
+     list1 list2))
 
 (defun sum-abs-diff (list1 list2)
   (sum-f-diff
@@ -203,10 +188,6 @@ useful when some sort, any sort, is wanted"
 ;;; Function construction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;
-(defparameter *expand-probability* 0.7
-  "Parameter of random expansion")
-
 (defun shake-p ()
   "General dice roll for determining whether something should be
 expanded."
@@ -214,25 +195,24 @@ expanded."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;these are the operations we can use in our functions
 ;binary operations
-(defvar *binary-operator-list* '(+ - * /))
+(defconstant +binary-operator-list+ '(+ - * /))
 ;unary operations
-(defvar *unary-operator-list* '(1+ sin cos log exp abs square sqrt))
+(defconstant +unary-operator-list+ '(1+ sin cos log exp abs square sqrt))
 
 
 (defun create-binary-term (n p1 p2)
   "Creates a list with the n'th binary operation and parameters p1 and p2."
-  (list (nth n *binary-operator-list*) p1 p2))
+  (list (nth n +binary-operator-list+) p1 p2))
 
 (defun create-unary-term (n p1)
   "Creates a list with the n'th unary operation and parameter p1"
-  (list (nth n *unary-operator-list*) p1))
+  (list (nth n +unary-operator-list+) p1))
 
 (defun create-random-unary (var)
-  (create-unary-term (random (length *unary-operator-list*)) var))
+  (create-unary-term (random (length +unary-operator-list+)) var))
 
 (defun create-random-binary (var1 var2)
-  (create-binary-term (random (length *binary-operator-list*)) var1 var2))
-
+  (create-binary-term (random (length +binary-operator-list+)) var1 var2))
 
 ;creates a random operation with unevaluated params p1, and p2
 (defun rand-tree-node ()
@@ -319,12 +299,18 @@ expanded."
     gf))
 
 (defmethod call ((obj genetic-function) arg)
-  "Given object and input, generate f(x)"
-  (handler-case
-      (funcall (compiled obj) arg)
-    (division-by-zero () 1e9) ;;Ideally NaN
-    (floating-point-overflow () 1e9)
-    (floating-point-underflow () 1e9)))
+  "Given object and input, generate f(x).
+If an error occurs, :FAIL will be returned instead of a number"
+  (let ((result
+          (handler-case
+              (funcall (compiled obj) arg)
+            (division-by-zero () :FAIL) ;;Ideally NaN
+            (floating-point-overflow () :FAIL)
+            (FLOATING-POINT-INEXACT () :FAIL)
+            (floating-point-underflow () :FAIL))))
+    (if (complexp result)
+        :FAIL
+        result)))
 
 
 (defun execute-list (obj input-list)
@@ -333,13 +319,29 @@ expanded."
 	  input-list))
 
 (defun assign-fitness (obj)
-  (setf (fitness obj)
-	(sum-sq-diff (execute-list obj (expected-inputs))
-		     (expected-outputs)))
-  obj)
+  (let ((presented-vector
+          (execute-list obj (expected-inputs))))
+    (if (position :FAIL presented-vector)
+        (setf (fitness obj) :FAIL)
+        (setf (fitness obj)
+              (sum-sq-diff
+               presented-vector
+               (expected-outputs))))
+    obj))
 
 (defun compare-genetic (a b &optional (sort-function '<))
-  (funcall sort-function (fitness a) (fitness b)))
+  (cond ((eq (fitness a) :fail)
+         nil)
+        ((eq (fitness b) :fail)
+         t)
+
+        ((eq (fitness a) nil)
+         nil)
+        ((eq (fitness b) nil)
+         t)
+
+        (t
+         (funcall sort-function (fitness a) (fitness b)))))
 
 (defun return-top-function (seq-objs)
   (first (sort seq-objs 'compare-genetic)))
@@ -351,10 +353,10 @@ expanded."
        (assign-fitness (construct-functions depth)))
    (range 0 count)))
 
-(defun best-half (list-of-objs)
+(defun best-half (list-of-objs &optional (comparator #'compare-genetic))
   "Takes the best half of the objects"
   (butlast
-   (sort list-of-objs 'compare-genetic)
+   (sort list-of-objs comparator)
    (truncate (/ (length list-of-objs ) 2))))
 
 (defun breed (parent1 parent2)
@@ -362,75 +364,77 @@ expanded."
   (let
       ((gf (make-instance 'genetic-function)))
     (setf (representation gf)
-	  (breed-trees
-	   (third (representation parent1) )
-	   (third (representation parent2))))
+          `(lambda (x)
+            ,(breed-functions
+              (third (representation parent1) )
+              (third (representation parent2))) )
+	  )
     (setf (compiled gf) (make-tree-function (representation gf)))
     gf))
 
-(defun breed-trees-hack (parent1 parent2)
-  (if (and
-       (consp parent1)
-       (consp parent2))
-      (if (or
-	   (= (length parent2) 2)
-	   (= (length parent1) 2))
-	  ;; either the op or the arg
-	  (if (and
-	       (consp (third parent2))
-	       (consp (third parent1)))
-	      (progn (format t "swappin")
-	      (exchange (random 2)
-			(breed-trees (second parent1) (second parent2))
-			(breed-trees (second parent1) (second parent2))))
-	    )
-	;;randomly pick op, arg1, arg2 to exchange
-	(exchange (random 3) parent1 parent2))))
+(defun available-breeeding-indicies (parent1 parent2)
+  "Returns the available indicies for swapping"
 
-(defun breed-trees (parent-lambda-1 parent-lambda-2)
-  "Takes (lambda (x) <list>"
+  (when (and (consp parent1)
+             (consp parent2))
+    ;(format t "both of us are lists~&")
+    ;;assumption of safely swapping the operation
+    (let ((breeding-index-list))
 
-  ;;don't recurse into a nil
-  (if (and
-	 (consp parent-lambda-1)
-	 (consp parent-lambda-2))
-      (let ((parent1 (third parent-lambda-1))
-	    (parent2 (third parent-lambda-2)))
+      ;; if the arity is equal, we can swap ops.
+      (when (and (= (length parent1)
+                    (length parent2)))
+     ;   (format t "pushing 0~&")
+        (pushnew 0 breeding-index-list))
 
-	(cond
-	 ;;If one of the two has form (op arg)
-	 ((or (= (length parent1) 2)
-	      (= (length parent2) 2))
-	  (progn
-	    (format t "one of us are op arg")
-	    ;;swap the first arg
-	    (if (and (consp (second parent1))
-		     (consp (second parent2)))
-		(exchange 1 parent1 parent2))
-	    ;;swap the op
-	    (exchange 0 parent1 parent2)))
-	 ;;if both have form (op arg1 arg2)
-	 ((and (= (length parent1) 3)
-	       (= (length parent2) 3))
-	  (progn
-	    (format t "both are op arg arg")
-	    ;;swap the first arg
-	    (if (and (consp (second parent1))
-		     (consp (second parent2)))
-		(exchange 1 parent1 parent2) )
-	    ;;swap the second arg
-	    (if (and (consp (third parent1))
-		     (consp (third parent2)))
-		(exchange 2 parent1 parent2)))))
+      ;;If either one of the two has form (op arg)
+      (when (or (= (length parent1) 2)
+                (= (length parent2) 2))
+      ;  (format t "one of us are op arg~&")
 
-	(exchange 0 parent1 parent2))))
+        (when (not (equal (second parent1)
+                          (second parent2)))
+       ;   (format t "pushing 1~&")
+          (pushnew 1 breeding-index-list)))
 
 
+      ;;if both have form (op arg1 arg2)
+      (when (and (= (length parent1) 3)
+                 (= (length parent2) 3))
+        ;(format t "both are op arg arg~&")
 
-;(setq f  '(LAMBDA (X) (cos (abs X) )) )
-;(setq g '(lambda (x) (sin (exp x))))
-;(setq g '(LAMBDA (X) (/ (/ X (1+ X)) X)))
-;(let ((random (lambda (x) 0))) (breed-trees f g))
+        ;(format t "pushing 0~&")
+        (pushnew 0 breeding-index-list)
+
+        ;; if the first argument is a form
+        ;;swap the first arg
+        (when (not (equal (second parent1)
+                          (second parent2)))
+         ; (format t "pushing 1~&")
+          (pushnew 1 breeding-index-list) )
+
+        ;;swap the second arg
+        (when (not (equal (third parent1)
+                          (third parent2)))
+          ;(format t "pushing 2~&")
+          (pushnew 2 breeding-index-list)))
+      breeding-index-list)))
+
+(defun breed-functions (parent1 parent2)
+  "Takes 2 <list>s, where <list> is expected to be an expresion suitable
+for being in a form (lambda (x) <list>).
+Breeds them together, non-recursively. "
+  (let ((indicies (available-breeeding-indicies parent1 parent2)))
+    (loop for index in indicies do
+      ;; randomly...
+      (when (shake-p)
+
+         (multiple-value-bind (p1 p2)
+             (exchange index parent1 parent2 )
+           (setf parent1 p1
+                 parent2 p2)))))
+  ;; practically, we only need to nab the first, so values is perfoect here
+  (values parent1 parent2))
 
 (defun truncate-if-odd-length (seq)
   (if (zerop (mod (length seq) 2))
@@ -444,32 +448,40 @@ expanded."
 	    (mapcar 'breed parent1s parent2s))))
 
 
+(defun evolve-one-generation (population &optional pop-max)
+  "Expects a sorted list of population beginning at best and ending
+  with worst. If pop-max is set, then it should be an integer > 0
+  which will be the size of the list returned.
+
+The population will be filtered: fitness values of :FAIL will be
+outright removed.  Then, the remainder will be divided in half; the
+top half will be shuffled, then the top quarter will be bred against
+the bottom quarter.. The bottom half will be discarded.
+
+The children will be mixed with the top quarter
+"
+  (when pop-max
+    (assert (integerp pop-max)))
+  (let* ((reproducing (remove-if #'(lambda (v)
+                                    (eq (fitness v) :FAIL))
+                                 population))
+         (elite (best-half reproducing))
+         (shuffled-elite (alexandria:shuffle elite))
+         (midpoint (truncate (/ (length elite) 2))))
+    (sort
+     (append
+      elite
+
+     (mapcar
+      #'assign-fitness
+      (mapcar #'breed
+              (subseq shuffled-elite 0 midpoint)
+              (subseq shuffled-elite midpoint))))
+     #'compare-genetic)))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defvar *average-goodness* '())
 
-(defun evolve (generations-left &optional (pop-max 100))
-  (loop for i from 1 to generations-left do
-	(push (average-list (mapcar 'fitness *population*)) *average-goodness*)
-	(setq *next-gen* (breed-list (best-half *population*)))
-	(setq *population* (append *population* *next-gen*))
-	(if (> (length *population*) pop-max)
-	    (setq *population*
-		  (butlast *population*
-			   (- (length *population*) pop-max))))))
 
-(defun evolve-no-trim (generations-left )
-  (loop for i from 1 to generations-left do
-	;; set the current average
-	(push (average-list (mapcar 'fitness *population*)) *average-goodness*)
-	;;do the breeding
-	(setq *next-gen* (breed-list (best-half *population*)))
-	;;add the bred functions to the population
-	(setq *population*
-	      (uniquize
-	       (append *population* *next-gen*)
-	       'equal-gf))))
 
 (defun best-so-far ()
   (first (sort *population* 'compare-genetic)))
@@ -485,8 +497,44 @@ expanded."
 
 ;;; Now for the real work!
 (defun seed-population()
-  (setf *population* (build-function-list 3 10)))
+  (sort
+   (build-function-list 3 20)
+   #'compare-genetic))
 
 
 (defmacro fast-add (seq)
   (reduce #'+ seq))
+
+(defun expected-inputs ()
+  "List of the expected inputs"
+  (mapcar #'car *test-input-output*))
+
+(defun expected-outputs ()
+  "List of the expected outputs"
+  (mapcar #'cadr *test-input-output*))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; workbench
+(defvar *test-input-output*
+  (mapcar #'(lambda (x)
+              (list x (want-func x)))
+          (range 2 100))
+  "The desired results")
+
+;the function we want
+(defun want-func (x)
+  "Goal function"
+  (+ x 1))
+
+
+(defparameter *expand-probability* 0.7
+  "Parameter of random expansion")
+
+
+
+(defun evolve (population generations-to-spin &optional pop-max)
+  (if (= generations-to-spin 0)
+      (evolve-one-generation population pop-max)
+      (evolve-one-generation
+       (evolve population (1- generations-to-spin) pop-max))))
