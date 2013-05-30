@@ -11,8 +11,33 @@
 ;;;; License: AGPL3.
 
 
-(ql:quickload :alexandria)
-
+;;(ql:quickload :alexandria)
+(defun shuffle (sequence &key (start 0) end)
+  "Returns a random permutation of SEQUENCE bounded by START and END.
+Original sequece may be destructively modified, and share storage with
+the original one. Signals an error if SEQUENCE is not a proper
+sequence."
+  (declare (type fixnum start)
+           (type (or fixnum null) end))
+  (etypecase sequence
+    (list
+     (let* ((end (or end (list-length sequence)))
+            (n (- end start)))
+       (do ((tail (nthcdr start sequence) (cdr tail)))
+           ((zerop n))
+         (rotatef (car tail) (car (nthcdr (random n) tail)))
+         (decf n))))
+    (vector
+     (let ((end (or end (length sequence))))
+       (loop for i from start below end
+             do (rotatef (aref sequence i)
+                         (aref sequence (+ i (random (- end i))))))))
+    (sequence
+     (let ((end (or end (length sequence))))
+       (loop for i from (- end 1) downto start
+             do (rotatef (elt sequence i)
+                         (elt sequence (+ i (random (- end i)))))))))
+  sequence)
 
 (defun range (start end)
   (assert (<= start end))
@@ -197,7 +222,7 @@ expanded."
 ;binary operations
 (defconstant +binary-operator-list+ '(+ - * /))
 ;unary operations
-(defconstant +unary-operator-list+ '(1+ sin cos log exp abs square sqrt))
+(defconstant +unary-operator-list+ '(sin cos log exp abs square sqrt))
 
 
 (defun create-binary-term (n p1 p2)
@@ -466,7 +491,7 @@ The children will be mixed with the top quarter
                                     (eq (fitness v) :FAIL))
                                  population))
          (elite (best-half reproducing))
-         (shuffled-elite (alexandria:shuffle elite))
+         (shuffled-elite (shuffle elite))
          (midpoint (truncate (/ (length elite) 2))))
     (sort
      (append
@@ -496,9 +521,9 @@ The children will be mixed with the top quarter
 
 
 ;;; Now for the real work!
-(defun seed-population()
+(defun seed-population( &optional (population 20) )
   (sort
-   (build-function-list 3 20)
+   (build-function-list 3 population)
    #'compare-genetic))
 
 
@@ -516,16 +541,18 @@ The children will be mixed with the top quarter
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; workbench
-(defvar *test-input-output*
-  (mapcar #'(lambda (x)
-              (list x (want-func x)))
-          (range 2 100))
-  "The desired results")
 
 ;the function we want
 (defun want-func (x)
   "Goal function"
   (+ x 1))
+
+
+(defvar *test-input-output*
+  (mapcar #'(lambda (x)
+              (list x (want-func x)))
+          (range 2 100))
+  "The desired results")
 
 
 (defparameter *expand-probability* 0.7
@@ -538,3 +565,9 @@ The children will be mixed with the top quarter
       (evolve-one-generation population pop-max)
       (evolve-one-generation
        (evolve population (1- generations-to-spin) pop-max))))
+
+
+(defun example-run ()
+  ;; evolves using a seed population for 10 generations, capping the
+  ;; population at 100
+  (evolve (seed-population) 10 100))
