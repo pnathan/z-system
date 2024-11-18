@@ -4,9 +4,8 @@
 ;;;; Z system. Genetic algorithm playground
 ;;;; The Z system attempts to 'breed' a matching function to a specified set of values
 ;;;;
-;;;; Credit is due to Svante, Rainer Joswig, and other users of Stack
-;;;; Overflow for extensive assistence to a newbie taking on a
-;;;; too-hard project.
+;;;; h/t to Svante, Rainer Joswig, and other users of Stack
+;;;; Overflow.
 ;;;;
 ;;;; License: AGPL3.
 
