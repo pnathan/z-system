@@ -39,6 +39,10 @@ Behaviors
   better evolutionary models.
 
 
-Licence
+Contributions
+---
+If you want to work on this, go ahead. Send in the PR. I'd love to see the ideas.
+
+License
 ---
 AGPL3
