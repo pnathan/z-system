@@ -38,11 +38,6 @@ sequence."
                          (elt sequence (+ i (random (- end i)))))))))
   sequence)
 
-(defun range (start end)
-  (assert (<= start end))
-  (loop for n from start below end
-        collect n))
-
 (defun unzip (seq)
   "Takes an even-length list and breaks it apart by evens/odd index"
   (let ((oddresult '())
@@ -66,7 +61,7 @@ sequence."
   "descend into the supplied list until an atom is hit.
 append the atom to the flattened rest"
   (if (endp tree)
-      x
+      nil
     (if (atom (car tree ))
 	(append (list (car tree)) (flatten (cdr tree)))
       (append (flatten (car tree)) (flatten (cdr tree ))))))
@@ -92,7 +87,7 @@ append the atom to the flattened rest"
   "Sums the differences between components of lists. Diff is computed
 by the function f"
   (unless (or (position nil list1)
-              (position nil list1))
+              (position nil list2))
 
     (handler-case
         (reduce #'+
@@ -223,6 +218,21 @@ expanded."
 ;unary operations
 (defconstant +unary-operator-list+ '(sin cos log exp abs square sqrt))
 
+(defun random-constant ()
+  "Generate a random numeric constant for expression trees.
+Weighted toward small integers which appear frequently in natural formulas."
+  (case (random 5)
+    (0 (1+ (random 5)))            ; small positive: 1-5
+    (1 (- (1+ (random 3))))        ; small negative: -1 to -3
+    (2 (/ (random 20) 10.0))       ; float: 0.0-1.9
+    (3 0)                           ; zero
+    (4 (+ 2 (random 9)))))         ; medium int: 2-10
+
+(defun random-terminal ()
+  "Return either the variable X or a random numeric constant."
+  (if (< (random 1.0) *constant-probability*)
+      (random-constant)
+      'x))
 
 (defun create-binary-term (n p1 p2)
   "Creates a list with the n'th binary operation and parameters p1 and p2."
@@ -241,8 +251,8 @@ expanded."
 ;creates a random operation with unevaluated params p1, and p2
 (defun rand-tree-node ()
   (if (shake-p)
-      (create-random-binary 'x 'x)
-    (create-random-unary 'x)))
+      (create-random-binary (random-terminal) (random-terminal))
+    (create-random-unary (random-terminal))))
 
 ;Sets the left leaf of parent to 'leaf
 (defun set-left-leaf (parent leaf)
@@ -257,24 +267,24 @@ expanded."
       ;;Can we go deeper?
       (if (eq depth 0)
           ;;this case is simple. Terminals only
-          (setf (nth 1 node) 'x
-                (nth 2 node) 'x)
+          (setf (nth 1 node) (random-terminal)
+                (nth 2 node) (random-terminal))
 	;;This case is the interesting one
 	(mapcar (lambda (leaf-setter)
 		  (funcall leaf-setter node
 			   (if (shake-p)
-			       'x
+			       (random-terminal)
 			     (make-tree (rand-tree-node) (- depth 1)))))
 		'(set-left-leaf  set-right-leaf)))
       ;;Is it of the form (op arg1)
       ;;Can we go deeper?
       (if (eq depth 0)
           ;;this case is simple. Terminals only
-          (set-left-leaf node 'x)
+          (set-left-leaf node (random-terminal))
           ;;This case is the interesting one
           (set-left-leaf node
                          (if (shake-p)
-                             'x
+                             (random-terminal)
                              (make-tree (rand-tree-node) (- depth 1))))))
   node);end of function- returns node
 
@@ -471,37 +481,106 @@ Breeds them together, non-recursively. "
 		(parent2s (second (unzip (truncate-if-odd-length list-of-objs)))))
 	    (mapcar 'breed parent1s parent2s))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Mutation
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun mutate-expression (expr)
+  "Walk an expression tree and randomly mutate nodes.
+At each node, with probability *node-mutation-rate*, apply a random mutation."
+  (cond
+    ;; Terminal node: maybe swap it
+    ((atom expr)
+     (if (< (random 1.0) *node-mutation-rate*)
+         (random-terminal)
+         expr))
+    ;; Internal node
+    (t
+     (if (< (random 1.0) *node-mutation-rate*)
+         ;; Mutate at this node
+         (case (random 3)
+           ;; Replace with fresh random subtree
+           (0 (new-tree (random 3)))
+           ;; Swap operator, keep children
+           (1 (cons (if (= (length expr) 3)
+                        (nth (random (length +binary-operator-list+))
+                             +binary-operator-list+)
+                        (nth (random (length +unary-operator-list+))
+                             +unary-operator-list+))
+                    (cdr expr)))
+           ;; Collapse to terminal
+           (2 (random-terminal)))
+         ;; No mutation here, recurse into children
+         (cons (car expr)
+               (mapcar #'mutate-expression (cdr expr)))))))
+
+(defun mutate-genetic-function (parent)
+  "Create a mutated offspring from a genetic function."
+  (let* ((gf (make-instance 'genetic-function))
+         (old-body (copy-tree (third (representation parent))))
+         (new-body (mutate-expression old-body)))
+    (setf (representation gf) `(lambda (x) ,new-body))
+    (setf (compiled gf) (make-tree-function (representation gf)))
+    gf))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Immigration (fresh genetic material)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun make-immigrants (count)
+  "Generate COUNT fresh random individuals."
+  (mapcar #'assign-fitness
+          (loop for i below count
+                collect (construct-functions (1+ (random 4))))))
 
 (defun evolve-one-generation (population &optional pop-max)
-  "Expects a sorted list of population beginning at best and ending
-  with worst. If pop-max is set, then it should be an integer > 0
-  which will be the size of the list returned.
-
-The population will be filtered: fitness values of :FAIL will be
-outright removed.  Then, the remainder will be divided in half; the
-top half will be shuffled, then the top quarter will be bred against
-the bottom quarter.. The bottom half will be discarded.
-
-The children will be mixed with the top quarter
-"
+  "Evolve one generation with selection, breeding, mutation, and immigration.
+Removes :FAIL individuals, selects the top half as elite, breeds children
+from shuffled elite pairs, mutates some elite members, and introduces fresh
+random immigrants. Returns the combined population sorted by fitness."
   (when pop-max
     (assert (integerp pop-max)))
   (let* ((reproducing (remove-if #'(lambda (v)
-                                    (eq (fitness v) :FAIL))
-                                 population))
+                                     (eq (fitness v) :FAIL))
+                                  population))
          (elite (best-half reproducing))
-         (shuffled-elite (shuffle elite))
-         (midpoint (truncate (/ (length elite) 2))))
-    (sort
-     (append
-      elite
-
-     (mapcar
-      #'assign-fitness
-      (mapcar #'breed
-              (subseq shuffled-elite 0 midpoint)
-              (subseq shuffled-elite midpoint))))
-     #'compare-genetic)))
+         (shuffled-elite (shuffle (copy-list elite)))
+         (midpoint (max 1 (truncate (/ (length elite) 2))))
+         ;; Breed children from paired elite
+         (children
+           (when (> (length shuffled-elite) 1)
+             (mapcar #'assign-fitness
+                     (mapcar #'breed
+                             (subseq shuffled-elite 0 midpoint)
+                             (subseq shuffled-elite midpoint
+                                     (min (length shuffled-elite)
+                                          (* 2 midpoint)))))))
+         ;; Mutate some elite members
+         (mutants
+           (mapcar #'assign-fitness
+                   (loop for ind in elite
+                         when (< (random 1.0) *mutation-rate*)
+                         collect (mutate-genetic-function ind))))
+         ;; Fresh random individuals
+         (immigrant-count (max 2 (truncate (* *immigration-rate*
+                                              (length population)))))
+         (immigrants (make-immigrants immigrant-count))
+         ;; Combine and sort
+         (combined (sort (append elite children mutants immigrants)
+                         #'compare-genetic))
+         ;; Truncate to pop-max
+         (result (if pop-max
+                     (subseq combined 0 (min pop-max (length combined)))
+                     combined)))
+    ;; Progress output
+    (incf *generation*)
+    (when result
+      (format t "Gen ~3d | Fitness: ~12,4f | Pop: ~3d | Best: ~a~%"
+              *generation*
+              (fitness (first result))
+              (length result)
+              (third (representation (first result)))))
+    result))
 
 
 
@@ -555,8 +634,22 @@ The children will be mixed with the top quarter
 
 
 (defparameter *expand-probability* 0.7
-  "Parameter of random expansion")
+  "Parameter of random expansion. Higher = shallower trees.")
 
+(defparameter *constant-probability* 0.3
+  "Probability of generating a numeric constant vs variable X at terminal positions.")
+
+(defparameter *mutation-rate* 0.2
+  "Probability of an individual being selected for mutation each generation.")
+
+(defparameter *node-mutation-rate* 0.15
+  "Per-node probability of mutation when walking a tree during mutation.")
+
+(defparameter *immigration-rate* 0.1
+  "Fraction of population replaced with fresh random individuals each generation.")
+
+(defvar *generation* 0
+  "Current generation counter for progress display.")
 
 
 (defun evolve (population generations-to-spin &optional pop-max)
@@ -567,6 +660,15 @@ The children will be mixed with the top quarter
 
 
 (defun example-run ()
-  ;; evolves using a seed population for 10 generations, capping the
-  ;; population at 100
-  (evolve (seed-population) 10 100))
+  "Evolve a population to discover (+ x 1). Prints progress each generation."
+  (setf *generation* 0)
+  (let ((result (evolve (seed-population 50) 50 200)))
+    (format t "~%=== Best result ===~%")
+    (format t "Expression: ~a~%" (representation (first result)))
+    (format t "Fitness:    ~a~%" (fitness (first result)))
+    (format t "~%Top 5:~%")
+    (loop for gf in (subseq result 0 (min 5 (length result)))
+          for i from 1
+          do (format t "  ~d. fitness=~,4f  ~a~%"
+                     i (fitness gf) (third (representation gf))))
+    result))
